@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ur">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rude-Cyber-Team Pairing Panel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Poppins', sans-serif; }
+        body { background: #080710; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+        .card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(10px); padding: 30px; border-radius: 16px; width: 100%; max-width: 420px; text-align: center; box-shadow: 0 0 20px rgba(0,255,150,0.1); }
+        h1 { font-family: 'Orbitron', sans-serif; color: #00ffaa; font-size: 22px; margin-bottom: 20px; letter-spacing: 1px; }
+        input { width: 100%; padding: 14px; background: rgba(0,0,0,0.5); border: 1px solid #00ffaa; border-radius: 8px; color: #fff; font-size: 16px; margin-bottom: 15px; outline: none; text-align: center; }
+        button { width: 100%; padding: 14px; background: #00ffaa; border: none; border-radius: 8px; color: #000; font-weight: bold; font-size: 16px; cursor: pointer; transition: 0.3s; }
+        button:hover { background: #00cc88; box-shadow: 0 0 15px #00ffaa; }
+        .code-box { margin-top: 20px; padding: 15px; background: rgba(0,255,170,0.1); border: 1px dashed #00ffaa; border-radius: 8px; font-family: 'Orbitron', sans-serif; font-size: 22px; color: #00ffaa; display: none; }
+        .admin-sec { margin-top: 25px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; }
+        .admin-btn { display: flex; align-items: center; justify-content: center; gap: 10px; background: #25D366; color: #fff; text-decoration: none; padding: 10px; border-radius: 6px; margin-top: 8px; font-size: 14px; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>𝗥𝗨𝗗𝗘-𝗖𝗬𝗕𝗘𝗥-𝗧𝗘𝗔𝗠</h1>
+        <p style="font-size: 13px; color: #aaa; margin-bottom: 20px;">WhatsApp Pairing Service</p>
+        
+        <input type="text" id="phone" placeholder="923001234567">
+        <button onclick="getCode()">Get Pairing Code</button>
+
+        <div id="result" class="code-box"></div>
+
+        <div class="admin-sec">
+            <p style="font-size: 12px; color: #888;">Official Support Admins</p>
+            <a href="https://wa.me/923458071063" class="admin-btn" target="_blank">💬 Qamar Abbas</a>
+            <a href="https://wa.me/923297112041" class="admin-btn" target="_blank">💬 Samar Hayat</a>
+            <a href="https://wa.me/923026912592" class="admin-btn" target="_blank">💬 Abdul Rauf Najmi</a>
+        </div>
+    </div>
+
+    <script>
+        async function getCode() {
+            const num = document.getElementById('phone').value;
+            const resBox = document.getElementById('result');
+            if(!num) return alert('فون نمبر درج کریں!');
+            
+            resBox.style.display = 'block';
+            resBox.innerText = 'کوڈ حاصل کیا جا رہا ہے...';
+
+            try {
+                const res = await fetch(`/code?number=${num}`);
+                const data = await res.json();
+                if(data.code) {
+                    resBox.innerText = data.code;
+                } else {
+                    resBox.innerText = 'ایرر! دوبارہ کوشش کریں۔';
+                }
+            } catch(e) {
+                resBox.innerText = 'سرور سے رابطہ نہ ہو سکا۔';
+            }
+        }
+    </script>
+</body>
+</html>
