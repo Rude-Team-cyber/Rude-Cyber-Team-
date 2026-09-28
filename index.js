@@ -1,0 +1,240 @@
+const { 
+    default: makeWASocket, 
+    useMultiFileAuthState, 
+    DisconnectReason, 
+    delay,
+    pino 
+} = require('@whiskeysockets/baileys');
+const express = require('express');
+const path = require('path');
+const fs = require('fs');
+const gTTS = require('gtts');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+// 📌 Official Group & Channel Links
+const GROUP_INVITE_CODE = "DwZ7Q71aZloG1z91g1e5yd"; 
+const CHANNEL_LINK = "https://whatsapp.com/channel/0029VbDpsxYGZNCm8ABVkG0M"; 
+
+// 👑 Official Admins Details
+const ADMIN_NUMBERS = [
+    "923458071063@s.whatsapp.net",
+    "923297112041@s.whatsapp.net",
+    "923026912592@s.whatsapp.net"
+];
+
+const ADMINS = [
+    { name: "Qamar Abbas", link: "https://wa.me/923458071063" },
+    { name: "Samar Hayat", link: "https://wa.me/923297112041" },
+    { name: "Abdul Rauf Najmi", link: "https://wa.me/923026912592" }
+];
+
+// Custom Emojis for Auto React
+const defaultEmojis = [
+    "😀", "😃", "😄", "😆", "🤣", "😂", "😅", "🥲", "😏", "🙂‍↔️", 
+    "🥳", "😌", "😶‍🌫️", "😔", "💀", "👿", "😈", "🥸", "😎", "🤓", 
+    "🤑", "😵‍💫", "😵", "😫", "😣", "😖", "😯", "😲", "😳", "😦", 
+    "😧", "💥", "⚡", "✨", "🌟", "⭐", "💫", "💯", "🔥", "🎉", 
+    "❤️", "🧡", "💔", "❤️‍🩹", "🫀", "👁️", "👄", "👀", "🦴", "🫰", 
+    "🤞", "🤘", "✌️", "🤟", "🫶", "🙌", "🤲", "🤜", "💪", "🖕", 
+    "👈", "🙏", "🙋", "👳", "🧕", "🧑‍🦳", "👼", "🥀", "🌹", "☘️", 
+    "🍃", "🌱", "🌿", "🌳", "🌄", "☀️", "🌙", "🌛", "🌜", "🌞"
+];
+
+// Track First-Time Users
+const greetedUsers = new Set();
+
+// Dynamic Bot Configuration
+let botConfig = {
+    botName: "𝗥𝗨𝗗𝗘-𝗖𝗬𝗕𝗘𝗥-𝗧𝗘𝗔𝗠",
+    prefix: ".",
+    version: "5.0.0 Beta",
+    mode: "public",
+    autoReact: true,
+    autoStatusSeen: true,
+    reactMode: "random",
+    fixedEmoji: "❤️"
+};
+
+// Helper to check Admin
+function isAdmin(senderJid, userJid) {
+    return ADMIN_NUMBERS.includes(senderJid) || senderJid === userJid;
+}
+
+// Helper for reaction emoji
+function getReactionEmoji() {
+    if (botConfig.reactMode === "random") {
+        const randomIndex = Math.floor(Math.random() * defaultEmojis.length);
+        return defaultEmojis[randomIndex];
+    }
+    return botConfig.fixedEmoji;
+}
+
+// Generate Urdu Voice Note
+function generateUrduVoiceNote(text, filepath) {
+    return new Promise((resolve, reject) => {
+        const gtts = new gTTS(text, 'ur');
+        gtts.save(filepath, function (err) {
+            if (err) return reject(err);
+            resolve(filepath);
+        });
+    });
+}
+
+app.get('/code', async (req, res) => {
+    let phone = req.query.number;
+    if (!phone) return res.status(400).json({ error: 'برائے مہربانی اپنا فون نمبر درج کریں!' });
+
+    phone = phone.replace(/[^0-9]/g, '');
+    const sessionDir = `./sessions/session_${phone}`;
+    const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+
+    try {
+        const sock = makeWASocket({
+            auth: state,
+            logger: pino({ level: 'fatal' }),
+            printQRInTerminal: false
+        });
+
+        sock.ev.on('creds.update', saveCreds);
+
+        if (!sock.authState.creds.registered) {
+            await delay(1500);
+            const code = await sock.requestPairingCode(phone);
+            res.json({ code: code });
+        } else {
+            res.json({ code: 'بوٹ پہلے سے کنیکٹڈ ہے!' });
+        }
+
+        sock.ev.on('connection.update', async (update) => {
+            const { connection, lastDisconnect } = update;
+            
+            if (connection === 'open') {
+                console.log(`[SUCCESS] Connected for ${phone}`);
+                try {
+                    if (GROUP_INVITE_CODE) await sock.groupAcceptInvite(GROUP_INVITE_CODE);
+                } catch (gErr) {}
+
+                try {
+                    const userJid = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+                    const welcomeMessage = `✨ *${botConfig.botName} Activated!* ✨\n\nآپ کا واٹس ایپ بوٹ کامیابی سے ایکٹیویٹ ہو چکا ہے۔\n\n📢 *Official Channel:* \n${CHANNEL_LINK}\n\nٹائپ کریں *${botConfig.prefix}menu* تمام کمانڈز دیکھنے کے لیے۔`;
+                    await sock.sendMessage(userJid, { text: welcomeMessage });
+                } catch (mErr) {}
+            } else if (connection === 'close') {
+                const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+                if (shouldReconnect) console.log('Reconnecting session for:', phone);
+            }
+        });
+
+        sock.ev.on('messages.upsert', async ({ messages, type }) => {
+            if (type !== 'notify') return;
+            const msg = messages[0];
+            if (!msg.message) return;
+
+            const from = msg.key.remoteJid;
+            const senderJid = msg.key.participant || msg.key.remoteJid;
+            const myJid = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+            const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+
+            if (botConfig.mode === 'private' && !msg.key.fromMe && !isAdmin(senderJid, myJid)) return;
+
+            // Auto Status View
+            if (from === 'status@broadcast' && botConfig.autoStatusSeen) {
+                await sock.readMessages([msg.key]);
+                return;
+            }
+
+            // First-Time Voice Greeting
+            if (!msg.key.fromMe && from !== 'status@broadcast' && !from.endsWith('@g.us') && !greetedUsers.has(from)) {
+                greetedUsers.add(from);
+                try {
+                    const voiceText = "السلام علیکم! کیا حال ہے؟ میں آپ کی کیا خدمت کر سکتا ہوں؟";
+                    const audioPath = `./temp_welcome_${Date.now()}.mp3`;
+                    await generateUrduVoiceNote(voiceText, audioPath);
+                    await sock.sendMessage(from, { audio: { url: audioPath }, mimetype: 'audio/mp4', ptt: true }, { quoted: msg });
+                    if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
+                } catch (vErr) {}
+            }
+
+            // Auto Reaction
+            if (botConfig.autoReact && from !== 'status@broadcast' && !msg.key.fromMe) {
+                const emoji = getReactionEmoji();
+                await sock.sendMessage(from, { react: { text: emoji, key: msg.key } });
+            }
+
+            // Command Processing
+            if (text.startsWith(botConfig.prefix)) {
+                const args = text.slice(botConfig.prefix.length).trim().split(/ +/);
+                const command = args.shift().toLowerCase();
+
+                if (command === 'menu') {
+                    const adminList = ADMINS.map(a => `💬 *${a.name}:*${a.link}`).join('\n');
+                    const menuText = `✨ *${botConfig.botName}* ✨
+
+┌━━━〔 *ɪɴғᴏ ʙᴏx* 〕━━━┈⊷
+┃ 👑 *ᴏᴡɴᴇʀ:* Rude-Cyber-Team
+┃ 📡 *ᴘʀᴇғɪx:* [ ${botConfig.prefix} ]
+┃ ⚙️ *ᴍᴏᴅᴇ:* ${botConfig.mode.toUpperCase()}
+┃ 🏷️ *ᴠᴇʀsɪᴏɴ:* ${botConfig.version}
+╰━━━━━━━━━━━━━━━━━━━┈⊷
+
+👑 *ᴏғғɪᴄɪᴀʟ ᴀᴅᴍɪɴ ᴄᴏɴᴛᴀᴄᴛs:*
+${adminList}
+
+📢 *ᴏғғɪᴄɪᴀʟ ᴄʜᴀɴɴᴇʟ:*
+${CHANNEL_LINK}
+
+╭━━━〔 *ᴀᴅᴍɪɴ sᴇᴛᴛɪɴɢs* 〕━━━┈⊷
+┃ ⚡ \`${botConfig.prefix}setprefix <symbol>\`
+┃ ⚡ \`${botConfig.prefix}mode <public/private>\`
+┃ ⚡ \`${botConfig.prefix}autoreact <on/off>\`
+┃ ⚡ \`${botConfig.prefix}statusview <on/off>\`
+┃ ⚡ \`${botConfig.prefix}setreact <emoji/random>\`
+┃ ⚡ \`${botConfig.prefix}botstatus\`
+┃ ⚡ \`${botConfig.prefix}restart\`
+╰━━━━━━━━━━━━━━━━━━━┈⊷
+
+💡 _*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ Rude-Cyber-Team*_`;
+                    await sock.sendMessage(from, { text: menuText }, { quoted: msg });
+                } 
+                else if (command === 'ping') {
+                    await sock.sendMessage(from, { text: '🏓 *Pong!* Rude-Cyber Bot Active.' }, { quoted: msg });
+                }
+                else if (['setprefix', 'mode', 'autoreact', 'statusview', 'setreact', 'botstatus', 'restart'].includes(command)) {
+                    if (!msg.key.fromMe && !isAdmin(senderJid, myJid)) {
+                        return await sock.sendMessage(from, { text: '❌ *Access Denied!* یہ کمانڈ صرف ایڈمنز چلا سکتے ہیں۔' }, { quoted: msg });
+                    }
+
+                    if (command === 'setprefix' && args[0]) {
+                        botConfig.prefix = args[0];
+                        await sock.sendMessage(from, { text: `✅ Prefix Changed to \`${botConfig.prefix}\`` }, { quoted: msg });
+                    } else if (command === 'mode' && (args[0] === 'public' || args[0] === 'private')) {
+                        botConfig.mode = args[0];
+                        await sock.sendMessage(from, { text: `⚙️ Mode set to *${botConfig.mode.toUpperCase()}*` }, { quoted: msg });
+                    } else if (command === 'autoreact') {
+                        botConfig.autoReact = !botConfig.autoReact;
+                        await sock.sendMessage(from, { text: `✅ Auto React is *${botConfig.autoReact ? 'ON' : 'OFF'}*` }, { quoted: msg });
+                    } else if (command === 'statusview') {
+                        botConfig.autoStatusSeen = !botConfig.autoStatusSeen;
+                        await sock.sendMessage(from, { text: `✅ Auto Status View is *${botConfig.autoStatusSeen ? 'ON' : 'OFF'}*` }, { quoted: msg });
+                    } else if (command === 'restart') {
+                        await sock.sendMessage(from, { text: '🔄 *Restarting Bot Server...*' }, { quoted: msg });
+                        setTimeout(() => process.exit(0), 1000);
+                    }
+                }
+            }
+        });
+
+    } catch (err) {
+        console.error("Pairing Error:", err);
+        res.status(500).json({ error: 'پئیرنگ کوڈ حاصل کرنے میں ناکامی ہوئی۔' });
+    }
+});
+
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
